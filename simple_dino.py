@@ -1,6 +1,7 @@
 import pygame
 import random
 import os
+from jump_detection import JumpDetector
 
 # Initialize Pygame and its mixer
 pygame.init()
@@ -35,10 +36,21 @@ OBSTACLE_IMAGE = pygame.transform.scale(OBSTACLE_IMAGE, (40, 60))
 FLOOR_IMAGE = pygame.transform.scale(FLOOR_IMAGE, (64, 64))
 CLOUD_IMAGE = pygame.transform.scale(CLOUD_IMAGE, (128, 71))
 
-# Game variables
-GAME_SPEED = 6
-score = 0
-game_over = False
+class GameState:
+    def __init__(self):
+        self.score = 0
+        self.jumps = 0
+        self.game_over = False
+        self.game_speed = 6
+
+    def reset(self):
+        self.score = 0
+        self.jumps = 0
+        self.game_over = False
+        self.game_speed = 6
+
+# Game state
+game_state = GameState()
 clock = pygame.time.Clock()
 font = pygame.font.Font(None, 36)
 
@@ -55,7 +67,7 @@ class Cloud(pygame.sprite.Sprite):
         self.rect.y = random.randint(50, 200)  # Random height for variety
 
     def update(self):
-        self.rect.x -= GAME_SPEED * 0.5  # Clouds move slower than the ground
+        self.rect.x -= game_state.game_speed * 0.5  # Clouds move slower than the ground
         if self.rect.right < 0:
             self.rect.x = SCREEN_WIDTH
             self.rect.y = random.randint(50, 200)  # New random height when recycling
@@ -116,7 +128,7 @@ class Cactus(pygame.sprite.Sprite):
         self.mask = pygame.mask.from_surface(self.image)
 
     def update(self):
-        self.rect.x -= GAME_SPEED
+        self.rect.x -= game_state.game_speed
         if self.rect.right < 0:
             self.rect.x = SCREEN_WIDTH
             return True
@@ -131,7 +143,7 @@ class Floor(pygame.sprite.Sprite):
         self.rect.y = SCREEN_HEIGHT - 64
 
     def update(self):
-        self.rect.x -= GAME_SPEED
+        self.rect.x -= game_state.game_speed
         if self.rect.right < 0:
             self.rect.x = SCREEN_WIDTH
 
@@ -169,10 +181,7 @@ def check_collision(dino, cactus):
     return dino.mask.overlap(cactus.mask, (offset_x, offset_y)) is not None
 
 def reset_game():
-    global score, game_over, GAME_SPEED
-    score = 0
-    game_over = False
-    GAME_SPEED = 6
+    game_state.reset()
     dino.rect.y = SCREEN_HEIGHT - 70
     dino.velocity = 0
     dino.is_jumping = False
@@ -187,6 +196,9 @@ def reset_game():
         cloud.rect.x = i * 300
         cloud.rect.y = random.randint(50, 200)
 
+# Initialize jump detector
+jump_detector = JumpDetector()
+
 # Game loop
 running = True
 while running:
@@ -194,37 +206,44 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+            jump_detector.release()  # Clean up camera resources
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE and not game_over:
-                dino.jump()
-            if event.key == pygame.K_r and game_over:
+            if event.key == pygame.K_r and game_state.game_over:
                 reset_game()
+    
+    # Check for jump detection
+    if jump_detector.is_jumping():
+        if game_state.game_over:
+            reset_game()  # Reset game if jump detected during game over
+        elif not dino.is_jumping:
+            game_state.jumps += 1
+            dino.jump()
 
-    if not game_over:
+    if not game_state.game_over:
         # Update
         all_sprites.update()
         
         # Check for collision using mask collision detection
         if check_collision(dino, cactus):
             DEATH_SOUND.play()  # Play death sound when collision occurs
-            game_over = True
+            game_state.game_over = True
         
         # Update score and speed
         if cactus.update():
-            score += 1
-            if score % 5 == 0:
-                GAME_SPEED += 0.5
+            game_state.score += 1
+            if game_state.score % 5 == 0:
+                game_state.game_speed += 0.5
 
     # Draw
     screen.fill(WHITE)
     all_sprites.draw(screen)
     
-    # Draw score
-    score_text = font.render(f'Score: {score}', True, BLACK)
+    # Draw score and jumps
+    score_text = font.render(f'Score: {game_state.score}  Jumps: {game_state.jumps}', True, BLACK)
     screen.blit(score_text, (10, 10))
 
     # Draw game over message
-    if game_over:
+    if game_state.game_over:
         game_over_text = font.render('Game Over! Press R to restart', True, BLACK)
         screen.blit(game_over_text, (SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2))
 
@@ -232,4 +251,6 @@ while running:
     pygame.display.flip()
     clock.tick(60)
 
+# Clean up resources
+jump_detector.release()
 pygame.quit()
