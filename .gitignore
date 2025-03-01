@@ -1,0 +1,27 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# Large files and binaries
+*.pkl
+*.wav
+*.zip
+
+# System files
+.DS_Store
+*/.DS_Store
+
+# IDE
+.vscode/
+.idea/
