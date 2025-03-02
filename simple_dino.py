@@ -8,7 +8,7 @@ pygame.init()
 pygame.mixer.init()
 
 # Set up the game window
-SCREEN_WIDTH = 1200
+SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 600
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Dino Game")
@@ -17,24 +17,31 @@ pygame.display.set_caption("Dino Game")
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 
-# Load images
-DINO_IMAGES = [pygame.image.load(os.path.join('art', f'dino_run({i}).png')) for i in range(1, 8)]
-OBSTACLE_IMAGE = pygame.image.load(os.path.join('art', 'obstacle.png'))
-FLOOR_IMAGE = pygame.image.load(os.path.join('art', 'floor.png'))
-CLOUD_IMAGE = pygame.image.load(os.path.join('art', 'clouds.png'))
+# Pre-load and scale images efficiently
+def load_and_scale(path, size):
+    image = pygame.image.load(path)
+    return pygame.transform.scale(image, size)
 
-# Load sounds
+# Load and scale images once
+SKY_IMAGE = load_and_scale(os.path.join('art', 'sky.png'), (SCREEN_WIDTH, SCREEN_HEIGHT))
+DINO_IMAGES = [load_and_scale(os.path.join('art', f'dino_run({i}).png'), (90, 90)) for i in range(1, 8)]
+FLYING_DINO_IMAGES = [
+    load_and_scale(os.path.join('art', 'fly_dino0.png'), (80, 80)),
+    load_and_scale(os.path.join('art', 'fly_dino1.png'), (80, 80))
+]
+OBSTACLE_IMAGES = [
+    load_and_scale(os.path.join('art', 'obstacles', f'obstacle{i}.png'), (60, 80))
+    for i in range(2)  # Load obstacle0.png and obstacle1.png
+]
+FLOOR_IMAGE = load_and_scale(os.path.join('art', 'floor.png'), (94, 94))
+CLOUD_IMAGE = load_and_scale(os.path.join('art', 'clouds.png'), (128, 71))
+
+# Load sounds with lower quality for better performance
+pygame.mixer.init(frequency=22050, size=-16, channels=1)
 DEATH_SOUND = pygame.mixer.Sound(os.path.join('art', 'death_sound.wav'))
 JUMP_SOUND = pygame.mixer.Sound(os.path.join('art', 'jump_sound.wav'))
-# Set sound volumes
 DEATH_SOUND.set_volume(0.5)
 JUMP_SOUND.set_volume(0.5)
-
-# Scale images
-DINO_IMAGES = [pygame.transform.scale(image, (60, 60)) for image in DINO_IMAGES]
-OBSTACLE_IMAGE = pygame.transform.scale(OBSTACLE_IMAGE, (40, 60))
-FLOOR_IMAGE = pygame.transform.scale(FLOOR_IMAGE, (64, 64))
-CLOUD_IMAGE = pygame.transform.scale(CLOUD_IMAGE, (128, 71))
 
 class GameState:
     def __init__(self):
@@ -58,6 +65,32 @@ font = pygame.font.Font(None, 36)
 ANIMATION_SPEED = 6  # Lower number = slower animation
 ANIMATION_COOLDOWN = 60 // ANIMATION_SPEED  # Number of frames between animation updates
 
+class FlyingDino(pygame.sprite.Sprite):
+    def __init__(self, x):
+        super().__init__()
+        self.images = FLYING_DINO_IMAGES
+        self.index = 0
+        self.image = self.images[self.index]
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = random.randint(50, 200)  # Random height like clouds
+        self.animation_timer = 0
+        self.animation_cooldown = ANIMATION_COOLDOWN
+
+    def update(self):
+        # Move like clouds
+        self.rect.x -= game_state.game_speed * 0.5
+        if self.rect.right < 0:
+            self.rect.x = SCREEN_WIDTH
+            self.rect.y = random.randint(50, 200)
+
+        # Animate wings
+        self.animation_timer += 1
+        if self.animation_timer >= self.animation_cooldown:
+            self.animation_timer = 0
+            self.index = (self.index + 1) % len(self.images)
+            self.image = self.images[self.index]
+
 class Cloud(pygame.sprite.Sprite):
     def __init__(self, x):
         super().__init__()
@@ -80,7 +113,7 @@ class Dino(pygame.sprite.Sprite):
         self.image = self.images[self.index]
         self.rect = self.image.get_rect()
         self.rect.x = 50
-        self.rect.y = SCREEN_HEIGHT - 70
+        self.rect.y = SCREEN_HEIGHT - 100
         self.jump_speed = -15
         self.gravity = 0.8
         self.velocity = 0
@@ -101,8 +134,8 @@ class Dino(pygame.sprite.Sprite):
             self.rect.y += self.velocity
             self.velocity += self.gravity
             
-            if self.rect.y >= SCREEN_HEIGHT - 70:
-                self.rect.y = SCREEN_HEIGHT - 70
+            if self.rect.y >= SCREEN_HEIGHT - 100:
+                self.rect.y = SCREEN_HEIGHT - 100
                 self.is_jumping = False
                 self.velocity = 0
         else:
@@ -116,21 +149,29 @@ class Dino(pygame.sprite.Sprite):
                 # Update mask for the new image
                 self.mask = pygame.mask.from_surface(self.image)
 
-class Cactus(pygame.sprite.Sprite):
+class Obstacle(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        self.width = 40
-        self.height = 60
-        self.image = OBSTACLE_IMAGE
+        self.width = 60
+        self.height = 80
+        self.images = OBSTACLE_IMAGES
+        self.set_random_image()
+        self.set_position(SCREEN_WIDTH, SCREEN_HEIGHT - 100)
+
+    def set_random_image(self):
+        self.image = random.choice(self.images)
         self.rect = self.image.get_rect()
-        self.rect.x = SCREEN_WIDTH
-        self.rect.y = SCREEN_HEIGHT - 75
         self.mask = pygame.mask.from_surface(self.image)
+
+    def set_position(self, x, y):
+        self.rect.x = x
+        self.rect.y = y
 
     def update(self):
         self.rect.x -= game_state.game_speed
         if self.rect.right < 0:
-            self.rect.x = SCREEN_WIDTH
+            self.set_random_image()  # Choose new random obstacle
+            self.set_position(SCREEN_WIDTH, SCREEN_HEIGHT - 100)
             return True
         return False
 
@@ -140,7 +181,7 @@ class Floor(pygame.sprite.Sprite):
         self.image = FLOOR_IMAGE
         self.rect = self.image.get_rect()
         self.rect.x = x
-        self.rect.y = SCREEN_HEIGHT - 64
+        self.rect.y = SCREEN_HEIGHT - 94
 
     def update(self):
         self.rect.x -= game_state.game_speed
@@ -150,17 +191,23 @@ class Floor(pygame.sprite.Sprite):
 # Create sprite groups
 all_sprites = pygame.sprite.Group()
 cloud_group = pygame.sprite.Group()
-cactus_group = pygame.sprite.Group()
+flying_dino_group = pygame.sprite.Group()
+obstacle_group = pygame.sprite.Group()
 floor_group = pygame.sprite.Group()
 
-# Create clouds
-for x in range(0, SCREEN_WIDTH * 2, 300):  # Space clouds apart
+# Create a limited number of clouds, flying dinos, and floor tiles for better performance
+for x in range(0, SCREEN_WIDTH + 300, 3000):  # Reduced number of clouds
     cloud = Cloud(x)
     all_sprites.add(cloud)
     cloud_group.add(cloud)
 
-# Create floor tiles
-for x in range(0, SCREEN_WIDTH + 64, 64):  # +64 to prevent gaps
+# Add flying dinos at different positions than clouds
+for x in range(150, SCREEN_WIDTH + 300, 3000):  # Offset from clouds
+    flying_dino = FlyingDino(x)
+    all_sprites.add(flying_dino)
+    flying_dino_group.add(flying_dino)
+
+for x in range(0, SCREEN_WIDTH + 128, 64):  # Only create visible floor tiles
     floor = Floor(x)
     all_sprites.add(floor)
     floor_group.add(floor)
@@ -169,23 +216,24 @@ for x in range(0, SCREEN_WIDTH + 64, 64):  # +64 to prevent gaps
 dino = Dino()
 all_sprites.add(dino)
 
-# Create the first cactus
-cactus = Cactus()
-all_sprites.add(cactus)
-cactus_group.add(cactus)
+# Create the first obstacle
+obstacle = Obstacle()
+all_sprites.add(obstacle)
+obstacle_group.add(obstacle)
 
-def check_collision(dino, cactus):
+def check_collision(dino, obstacle):
     # Use mask collision for more precise hit detection with sprites
-    offset_x = cactus.rect.x - dino.rect.x
-    offset_y = cactus.rect.y - dino.rect.y
-    return dino.mask.overlap(cactus.mask, (offset_x, offset_y)) is not None
+    offset_x = obstacle.rect.x - dino.rect.x
+    offset_y = obstacle.rect.y - dino.rect.y
+    return dino.mask.overlap(obstacle.mask, (offset_x, offset_y)) is not None
 
 def reset_game():
     game_state.reset()
-    dino.rect.y = SCREEN_HEIGHT - 70
+    dino.rect.y = SCREEN_HEIGHT - 100
     dino.velocity = 0
     dino.is_jumping = False
-    cactus.rect.x = SCREEN_WIDTH
+    obstacle.set_random_image()  # Choose new random obstacle
+    obstacle.set_position(SCREEN_WIDTH, SCREEN_HEIGHT - 100)
     
     # Reset floor positions
     for i, floor in enumerate(floor_group):
@@ -195,13 +243,28 @@ def reset_game():
     for i, cloud in enumerate(cloud_group):
         cloud.rect.x = i * 300
         cloud.rect.y = random.randint(50, 200)
+        
+    # Reset flying dino positions
+    for i, flying_dino in enumerate(flying_dino_group):
+        flying_dino.rect.x = 150 + (i * 300)  # Offset from clouds
+        flying_dino.rect.y = random.randint(50, 200)
 
 # Initialize jump detector
 jump_detector = JumpDetector()
 
+# Performance settings
+MAX_FPS = 60
+MIN_UPDATE_TIME = 1000 // MAX_FPS  # Minimum time between updates in milliseconds
+
 # Game loop
 running = True
+last_update = pygame.time.get_ticks()
 while running:
+    # Control frame rate
+    current_time = pygame.time.get_ticks()
+    if current_time - last_update < MIN_UPDATE_TIME:
+        continue
+    last_update = current_time
     # Handle events
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -224,18 +287,18 @@ while running:
         all_sprites.update()
         
         # Check for collision using mask collision detection
-        if check_collision(dino, cactus):
+        if check_collision(dino, obstacle):
             DEATH_SOUND.play()  # Play death sound when collision occurs
             game_state.game_over = True
         
         # Update score and speed
-        if cactus.update():
+        if obstacle.update():
             game_state.score += 1
             if game_state.score % 5 == 0:
                 game_state.game_speed += 0.5
 
     # Draw
-    screen.fill(WHITE)
+    screen.blit(SKY_IMAGE, (0, 0))  # Draw sky background
     all_sprites.draw(screen)
     
     # Draw score and jumps

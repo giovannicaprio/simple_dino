@@ -13,10 +13,13 @@ class JumpDetector:
             min_tracking_confidence=0.5
         )
         
-        # Initialize camera
+        # Initialize camera with lower resolution
         self.cap = cv2.VideoCapture(0)
         if not self.cap.isOpened():
             raise ValueError("Could not open camera")
+        # Set lower resolution for better performance
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
         
         # Previous y positions of hips to detect movement (using a buffer for smoothing)
         self.hip_positions = deque(maxlen=5)
